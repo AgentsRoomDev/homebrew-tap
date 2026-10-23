@@ -1,0 +1,66 @@
+# Follows the AgentsRoom releases published on agentsroom.dev:
+# - bumps Casks/agentsroom.rb (version + the two .dmg sha256) when a new macOS
+#   release is live;
+# - submits the new Windows release to winget-pkgs (needs the WINGET_TOKEN
+#   secret, a token of this account; skipped when it is missing).
+# Only the update feeds of agentsroom.dev are read: no source code is involved.
+name: Follow AgentsRoom releases
+
+on:
+  schedule:
+    - cron: "17 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  DOWNLOADS: https://agentsroom.dev/downloads
+
+jobs:
+  homebrew:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bump the cask to the live macOS release
+        run: |
+          set -euo pipefail
+          latest=$(curl -fsSL "$DOWNLOADS/latest-mac.yml" | awk '/^version:/{print $2; exit}')
+          current=$(sed -n 's/^  version "\(.*\)"/\1/p' Casks/agentsroom.rb)
+          echo "live=$latest cask=$current"
+          [ -n "$latest" ]
+          [ "$latest" != "$current" ] || exit 0
+          sha() { curl -fsSL "$DOWNLOADS/$1" | sha256sum | awk '{print $1}'; }
+          arm=$(sha "AgentsRoom-$latest.dmg")
+          intel=$(sha "AgentsRoom-$latest-x64.dmg")
+          sed -i -e "s/^  version \".*\"/  version \"$latest\"/" \
+                 -e "s/^  sha256 arm:   \"[0-9a-f]*\",/  sha256 arm:   \"$arm\",/" \
+                 -e "s/^         intel: \"[0-9a-f]*\"/         intel: \"$intel\"/" Casks/agentsroom.rb
+          grep -q "version \"$latest\"" Casks/agentsroom.rb
+          grep -q "$arm" Casks/agentsroom.rb
+          grep -q "$intel" Casks/agentsroom.rb
+          git -c user.name="AgentsRoom" -c user.email="contact@agentsroom.dev" commit -am "agentsroom $latest"
+          git push
+
+  winget:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
+      KOMAC_VERSION: 2.17.1
+      PACKAGE: AgentsRoom.AgentsRoom
+    steps:
+      - name: Submit the live Windows release to winget
+        if: env.GH_TOKEN != ''
+        run: |
+          set -euo pipefail
+          latest=$(curl -fsSL "$DOWNLOADS/latest.yml" | awk '/^version:/{print $2; exit}')
+          path=repos/microsoft/winget-pkgs/contents/manifests/a/AgentsRoom/AgentsRoom
+          if ! gh api "$path" >/dev/null 2>&1; then echo "Package not merged in winget yet: nothing to update"; exit 0; fi
+          if gh api "$path/$latest" >/dev/null 2>&1; then echo "$latest already in winget"; exit 0; fi
+          asset="komac-$KOMAC_VERSION-x86_64-unknown-linux-gnu.tar.gz"
+          gh release download "v$KOMAC_VERSION" --repo russellbanks/Komac --pattern "$asset" --pattern SHA256SUMS
+          grep " $asset\$" SHA256SUMS | sha256sum -c -
+          tar xzf "$asset"
+          ./komac update "$PACKAGE" --version "$latest" \
+            --urls "$DOWNLOADS/AgentsRoom-$latest-x64.exe" "$DOWNLOADS/AgentsRoom-$latest-arm64.exe" \
+            --submit --token "$GH_TOKEN"
