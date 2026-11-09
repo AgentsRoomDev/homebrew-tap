@@ -1,9 +1,9 @@
 cask "agentsroom" do
   arch arm: "", intel: "-x64"
 
-  version "1.261.0"
-  sha256 arm:   "90b307369348630123f3edc2f4adcb73db5de59b1c7a55f2d298ccdd4c404da5",
-         intel: "05417a2f4e3008b1d5dbcac5287d32f75896f3c4493e4fa669845890151e521e"
+  version "1.262.0"
+  sha256 arm:   "136b4f52705f58b034322b77ecbe77f978c6a97eb6d4e091a7e25574b2f3bab2",
+         intel: "da880ad06ed82e91708f1cd592c4f4c8fbf3113ccf74e6d9d73bd588477cf1b2"
 
   url "https://agentsroom.dev/downloads/AgentsRoom-#{version}#{arch}.dmg"
   name "AgentsRoom"
